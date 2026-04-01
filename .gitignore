@@ -1,0 +1,68 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local tool config
+.claude/settings.local.json
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+dist/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# Node / frontend
+node_modules/
+*.local
+frontend/dist/
+
+# MinerU 调试落盘（参见 backend/app/services/mineru.py）
+backend/debug/
+backend/mineru_response_debug.json
+
+# 数据库（运行时生成）
+backend/mineru.db
+backend/*.db
+
+# 上传的临时文件
+backend/uploads/
