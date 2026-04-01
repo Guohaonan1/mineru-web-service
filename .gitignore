@@ -66,3 +66,6 @@ backend/*.db
 
 # 上传的临时文件
 backend/uploads/
+
+# 文档测试文件
+docs/
