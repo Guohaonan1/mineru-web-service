@@ -153,16 +153,16 @@ export default function ContentViewerV2({ blocks, activeIndex, onBlockClick, hid
             <div
               ref={(el) => { if (el) blockRefs.current.set(block.index, el) }}
               onClick={() => onBlockClick(block.index)}
-              className={`rounded-md px-2 py-0.5 transition-all duration-150 cursor-pointer ${
+              className={`rounded-md transition-all duration-150 cursor-pointer ${
                 block.discarded
                   ? isActive
                     ? 'bg-gray-100 ring-1 ring-gray-400'
                     : 'ring-1 ring-gray-200 hover:bg-gray-100'
-                  : isEquationOrImage
+                  : 'px-2 py-0.5 ' + (isEquationOrImage
                     ? 'hover:bg-gray-50'
                     : isActive
                       ? 'bg-blue-50 ring-1 ring-blue-300 shadow-sm'
-                      : 'hover:bg-gray-50'
+                      : 'hover:bg-gray-50')
               }`}
             >
               <BlockContent block={block} isActive={isActive} />

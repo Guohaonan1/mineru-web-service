@@ -162,7 +162,7 @@ export default function PDFViewerV2({ url, blocks, activeIndex, onBlockClick, hi
                         const isHovered = index === hoveredIndex
                         const isHidden = hiddenBlocks.has(index)
                         const [x1, y1, x2, y2] = block.bbox
-                        const stroke = TYPE_STROKE[block.type] ?? DEFAULT_STROKE
+                        const stroke = block.discarded ? '#9ca3af' : (TYPE_STROKE[block.type] ?? DEFAULT_STROKE)
 
                         let fill = 'transparent'
                         let strokeColor = 'transparent'
