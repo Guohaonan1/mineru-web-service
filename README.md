@@ -81,19 +81,37 @@ docker run -d -p 9000:9000 -p 9001:9001 \
 
 ### 3. 启动后端
 
+安装 uv（如未安装）：
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 或通过 pip
+pip install uv
+```
+
 ```bash
 cd backend
 
-# 复制环境变量配置
+# 复制并编辑配置文件（所有配置项均在此文件中）
 cp .env.example .env
 # 按需修改 .env
 
-# 安装依赖
+# 安装依赖（自动创建虚拟环境）
 uv sync
 
-# 启动
+# 激活虚拟环境
+source .venv/bin/activate  # macOS / Linux
+# .venv\Scripts\activate   # Windows
+
+# 启动（开发模式，支持热重载）
 uv run fastapi dev main.py
 ```
+
+配置项说明见 `backend/.env.example`，由 `app/config.py` 统一加载。优先级从高到低：**环境变量 > `.env` 文件 > `config.py` 默认值**。
+
+**调试模式：** `app/services/mineru.py` 中有一段被注释的调试代码，启用后会将 MinerU 的原始响应完整写入 `backend/debug/` 目录（JSON 格式），便于排查解析问题。使用时取消注释即可，生产环境保持注释状态。
 
 后端 API 文档：`http://localhost:8000/docs`
 
@@ -118,8 +136,9 @@ mineru-web-service/
 ├── backend/
 │   ├── main.py                    # FastAPI 入口，CORS 配置
 │   ├── pyproject.toml             # 依赖声明（uv）
-│   ├── .env.example               # 环境变量模板
+│   ├── .env.example               # 配置模板（复制为 .env 后修改）
 │   └── app/
+│       ├── config.py              # 集中配置（pydantic-settings，读取 .env）
 │       ├── database.py            # SQLite 连接与初始化
 │       ├── models.py              # SQLAlchemy ORM 模型
 │       ├── schemas.py             # Pydantic 请求/响应模型

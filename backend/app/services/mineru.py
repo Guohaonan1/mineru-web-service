@@ -2,7 +2,9 @@ import json
 import os
 import httpx
 
-MINERU_URL = os.getenv("MINERU_URL", "http://localhost:18000")
+from app.config import settings
+
+MINERU_URL = settings.mineru_url
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".tif", ".gif"}
 
@@ -48,13 +50,14 @@ async def parse_file(file_bytes: bytes, filename: str) -> dict:
         response.raise_for_status()
         data = response.json()
 
-        # 调试：将原始响应保存到 backend/debug/ 目录
-        debug_dir = os.path.join(os.path.dirname(__file__), "..", "..", "debug")
-        os.makedirs(debug_dir, exist_ok=True)
-        debug_path = os.path.join(debug_dir, f"mineru_{filename}.json")
-        with open(debug_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"[mineru] raw response saved to {debug_path}")
+        # 调试用：将 MinerU 原始响应落盘到 backend/debug/，方便排查解析问题
+        # 生产环境请注释此段，避免磁盘写入和敏感数据落盘
+        # debug_dir = os.path.join(os.path.dirname(__file__), "..", "..", "debug")
+        # os.makedirs(debug_dir, exist_ok=True)
+        # debug_path = os.path.join(debug_dir, f"mineru_{filename}.json")
+        # with open(debug_path, "w", encoding="utf-8") as f:
+        #     json.dump(data, f, ensure_ascii=False, indent=2)
+        # print(f"[mineru] raw response saved to {debug_path}")
 
         results = data.get("results", {})
         item = next(iter(results.values()), {}) if results else {}
