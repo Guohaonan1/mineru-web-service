@@ -23,6 +23,7 @@ class FileDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     result: Optional[str] = None
+    mineru_task_id: Optional[str] = None
     error: Optional[str] = None
 
     model_config = {"from_attributes": True}

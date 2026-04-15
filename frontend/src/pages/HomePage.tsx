@@ -7,18 +7,23 @@ interface Props {
   onUploaded: () => void
 }
 
+type MinerUVersion = '2.7.6' | '3.0'
+
 export default function HomePage({ onUploaded }: Props) {
   const navigate = useNavigate()
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [version, setVersion] = useState<MinerUVersion>('3.0')
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
     setUploading(true)
     setError(null)
     try {
-      const result = await api.upload(files[0])
+      const result = version === '3.0'
+        ? await api.uploadAsync(files[0])
+        : await api.upload(files[0])
       onUploaded()
       navigate(`/tasks/${result.id}`)
     } catch (e: any) {
@@ -26,7 +31,7 @@ export default function HomePage({ onUploaded }: Props) {
     } finally {
       setUploading(false)
     }
-  }, [navigate, onUploaded])
+  }, [navigate, onUploaded, version])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -39,6 +44,26 @@ export default function HomePage({ onUploaded }: Props) {
       <div className="max-w-xl w-full text-center">
         <h1 className="text-2xl font-semibold text-gray-800 mb-2">智能文档解析</h1>
         <p className="text-gray-500 text-sm mb-8">支持 PDF、图片等格式，自动提取文本、表格和公式</p>
+
+        {/* MinerU 版本选择 */}
+        <div className="flex items-center justify-center gap-1 mb-5 p-1 bg-white border border-gray-200 rounded-lg w-fit mx-auto">
+          {(['2.7.6', '3.0'] as MinerUVersion[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => setVersion(v)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                version === v
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              MinerU {v}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mb-4 -mt-3">
+          {version === '3.0' ? '异步任务模式（POST /tasks）' : '同步解析模式（POST /file_parse）'}
+        </p>
 
         {/* 拖拽上传区 */}
         <label

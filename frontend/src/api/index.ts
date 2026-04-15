@@ -18,6 +18,12 @@ export const api = {
     return request('/files/upload', { method: 'POST', body: form })
   },
 
+  uploadAsync(file: File): Promise<FileItem> {
+    const form = new FormData()
+    form.append('file', file)
+    return request('/files/upload_async', { method: 'POST', body: form })
+  },
+
   listFiles(): Promise<FileItem[]> {
     return request('/files')
   },

@@ -16,4 +16,5 @@ class File(Base):
     result = Column(Text, nullable=True)             # 解析后的 Markdown
     content_list = Column(Text, nullable=True)       # JSON 格式的块级内容（含 bbox）
     middle_json  = Column(Text, nullable=True)       # MinerU middle_json 原始布局数据
+    mineru_task_id = Column(String, nullable=True)   # MinerU 异步任务 ID（/tasks 接口）
     error = Column(Text, nullable=True)

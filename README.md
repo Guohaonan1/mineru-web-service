@@ -2,6 +2,7 @@
 
 基于本地 [MinerU](https://github.com/opendatalab/MinerU) 服务的文档智能解析平台。React 前端 + 轻量 FastAPI 后端，解析能力完全由 MinerU 本地服务承载，自建后端只做元数据存储与文件代理。
 
+最终效果图：
 ![效果示意](web.png)
 
 ## 功能

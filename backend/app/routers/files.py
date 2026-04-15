@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db
 from app.models import File as FileModel
 from app.schemas import FileDetail, FileOut
-from app.services.mineru import parse_file
+from app.services.mineru import fetch_task_result, get_task_status, parse_file, submit_task
 from app.services.storage import delete_file, get_presigned_url, upload_file
 
 router = APIRouter()
@@ -116,6 +117,89 @@ def get_download_url(file_id: int, db: Session = Depends(get_db)):
     if not file or not file.minio_path:
         raise HTTPException(status_code=404, detail="文件不存在")
     return {"url": get_presigned_url(file.minio_path)}
+
+
+async def run_parse_async(file_id: int, file_bytes: bytes, filename: str):
+    """
+    异步解析流程：提交任务到 MinerU /tasks，轮询状态，完成后取结果存库。
+    """
+    db = SessionLocal()
+    try:
+        file = db.query(FileModel).filter(FileModel.id == file_id).first()
+        if not file:
+            return
+
+        # 提交任务
+        task_id = await submit_task(file_bytes, filename)
+        file.mineru_task_id = task_id
+        file.status = "running"
+        file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+        # 轮询 MinerU 任务状态
+        while True:
+            status_data = await get_task_status(task_id)
+            status = status_data.get("status", "")
+            if status == "completed":
+                break
+            if status == "failed":
+                raise RuntimeError(status_data.get("error") or "MinerU task failed")
+            await asyncio.sleep(3)
+
+        # 获取并存储结果
+        parsed = await fetch_task_result(task_id, filename)
+        file.status = "done"
+        file.result = parsed["md_content"]
+        file.content_list = json.dumps(parsed["content_list"], ensure_ascii=False)
+        if parsed.get("middle_json") is not None:
+            file.middle_json = json.dumps(parsed["middle_json"], ensure_ascii=False)
+        file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception as e:
+        file.status = "failed"
+        file.error = str(e)
+        file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/upload_async", response_model=FileOut)
+async def upload_file_async_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """使用 MinerU 异步任务接口（POST /tasks）解析文件，立即返回，后台轮询结果。"""
+    file_bytes = await file.read()
+
+    suffix = file.filename.rsplit(".", 1)[-1] if "." in file.filename else ""
+    object_name = f"{uuid.uuid4()}.{suffix}" if suffix else str(uuid.uuid4())
+
+    upload_file(object_name, file_bytes, file.content_type or "application/octet-stream")
+
+    db_file = FileModel(
+        filename=file.filename,
+        minio_path=object_name,
+        content_type=file.content_type,
+    )
+    db.add(db_file)
+    db.commit()
+    db.refresh(db_file)
+
+    background_tasks.add_task(run_parse_async, db_file.id, file_bytes, file.filename)
+    return db_file
+
+
+@router.get("/{file_id}/mineru_status")
+async def get_mineru_task_status(file_id: int, db: Session = Depends(get_db)):
+    """查询 MinerU 异步任务的原始状态（直接透传 MinerU /tasks/{task_id} 响应）。"""
+    file = db.query(FileModel).filter(FileModel.id == file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not file.mineru_task_id:
+        raise HTTPException(status_code=400, detail="该文件未使用异步任务接口提交")
+    return await get_task_status(file.mineru_task_id)
 
 
 @router.delete("/{file_id}")

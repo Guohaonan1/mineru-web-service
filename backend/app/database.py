@@ -16,7 +16,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     # 补齐新增列（SQLite 不支持 IF NOT EXISTS，捕获异常即可）
     with engine.connect() as conn:
-        for col in ["middle_json TEXT"]:
+        for col in ["middle_json TEXT", "mineru_task_id TEXT"]:
             try:
                 conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE files ADD COLUMN {col}"))
                 conn.commit()
