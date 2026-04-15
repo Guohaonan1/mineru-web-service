@@ -24,26 +24,44 @@ React 前端（开发：port 5173 / 生产：port 80）
     │  /api/* → 反向代理
     ▼
 FastAPI 后端（port 8000）
-    ├── SQLite（文件元数据、解析结果缓存）
-    ├── MinIO（原文件存储，生成预签名 URL 供前端预览）
+    ├── SQLite（文件元数据 + 解析结果缓存）
+    ├── MinIO（原文件对象存储，生成预签名 URL 供前端预览）
     │
     └── HTTP 调用
          ▼
     MinerU 本地服务（port 18000）
-         ├── POST /file_parse   核心解析接口
-         └── GET  /docs         Swagger 文档
+         ├── POST /file_parse        同步解析（阻塞等待结果）
+         ├── POST /tasks             异步提交任务（立即返回 task_id）
+         ├── GET  /tasks/{task_id}   查询任务状态
+         └── GET  /docs              Swagger 文档
 ```
+
+**存储职责：**
+
+| 存储 | 存什么 | 用途 |
+|------|--------|------|
+| **MinIO** | 用户上传的原始文件（PDF / 图片） | 生成预签名 URL，供前端左侧 `react-pdf` / `<img>` 渲染原文件 |
+| **SQLite** | 文件元数据（filename、status、created_at 等） | 文件列表、历史记录、任务状态轮询 |
+| **SQLite** | 解析结果（`md_content`、`content_list`、`middle_json`，序列化为 TEXT） | 避免重复调用 MinerU，前端直接从后端取缓存 |
 
 **后端职责极简：**
 
+| 职责 | MinerU 承担 | 自建后端承担 |
+|------|------------|------------|
+| 文件解析（版面分析、OCR、公式、表格） | ✅ | 转发请求 |
+| 任务队列 | ✅ | ❌ |
+| 解析结果（md / content_list / middle_json） | ✅ | 缓存到 SQLite |
+| 原文件存储 + 预览 URL | ❌ | ✅ MinIO |
+| 文件列表 / 历史记录 | ❌ | ✅ SQLite |
 
-| 职责                                    | MinerU 承担 | 自建后端承担     |
-| ------------------------------------- | --------- | ---------- |
-| 文件解析（版面分析、OCR、公式、表格）                  | ✅         | 转发请求       |
-| 任务队列                                  | ✅         | ❌          |
-| 解析结果（md / content_list / middle_json） | ✅         | 缓存到 SQLite |
-| 原文件存储 + 预览 URL                        | ❌         | ✅ MinIO    |
-| 文件列表 / 历史记录                           | ❌         | ✅ SQLite   |
+**MinerU 版本兼容：**
+
+| 版本 | 接口 | 模式 | 说明 |
+|------|------|------|------|
+| 2.7.6 | `POST /file_parse` | 同步 | 阻塞等待 MinerU 返回完整结果，超时风险较高 |
+| 3.0 | `POST /tasks` + 轮询 | 异步 | 立即返回 task_id，后台轮询状态直到完成再取结果 |
+
+前端上传页可切换版本，两套流程对应不同后端接口（`/files/upload` vs `/files/upload_async`），解析完成后的查看体验完全一致。
 
 
 ## 环境依赖
@@ -176,15 +194,17 @@ mineru-web-service/
 ## 后端 API
 
 
-| 方法       | 路径                         | 说明                            |
-| -------- | -------------------------- | ----------------------------- |
-| `POST`   | `/files/upload`            | 上传文件，异步触发 MinerU 解析           |
-| `GET`    | `/files`                   | 文件列表                          |
-| `GET`    | `/files/{id}/result`       | 文件详情 + 状态                     |
-| `GET`    | `/files/{id}/content_list` | 解析结果（content_list 格式）         |
-| `GET`    | `/files/{id}/middle_json`  | 解析结果（middle_json 格式，含精确 bbox） |
-| `GET`    | `/files/{id}/download_url` | 原文件预签名下载 URL                  |
-| `DELETE` | `/files/{id}`              | 删除记录及存储文件                     |
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/files/upload` | 上传并同步解析（MinerU 2.7.6，`POST /file_parse`） |
+| `POST` | `/files/upload_async` | 上传并异步解析（MinerU 3.0，`POST /tasks` + 轮询） |
+| `GET` | `/files` | 文件列表 |
+| `GET` | `/files/{id}/result` | 文件详情 + 状态 |
+| `GET` | `/files/{id}/content_list` | 解析结果（content_list 格式） |
+| `GET` | `/files/{id}/middle_json` | 解析结果（middle_json 格式，含精确 bbox） |
+| `GET` | `/files/{id}/download_url` | 原文件预签名下载 URL（MinIO 生成） |
+| `GET` | `/files/{id}/mineru_status` | 查询 MinerU 异步任务原始状态（3.0 模式专用） |
+| `DELETE` | `/files/{id}` | 删除记录及 MinIO 文件 |
 
 
 ## 技术栈
