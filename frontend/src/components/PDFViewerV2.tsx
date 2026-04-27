@@ -4,7 +4,9 @@ import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { ParsedBlock } from '../types'
 
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+// 离线/内网环境：将 pdf.worker.min.mjs 复制到 public/ 后取消注释下一行，并注释掉 CDN 那行
+// pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
 const TYPE_STROKE: Record<string, string> = {
   text:                '#3b82f6',

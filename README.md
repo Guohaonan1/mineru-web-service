@@ -150,6 +150,15 @@ pnpm run dev
 
 访问：`http://localhost:5173`
 
+> **离线 / 内网环境**：前端 PDF 预览默认从 `unpkg.com` 加载 PDF.js worker。若无法访问外网，可改为本地加载：
+>
+> ```bash
+> # 将 worker 文件复制到 public/
+> cp node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/
+> ```
+>
+> 然后在 `src/components/PDFViewer.tsx` 和 `src/components/PDFViewerV2.tsx` 中，注释掉 CDN 那行，取消注释本地那行（文件内已有说明）。
+
 ## 项目结构
 
 ```

@@ -11,7 +11,9 @@ function getBlockText(block: ContentBlock): string {
   return block.text ?? ''
 }
 
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+// 离线/内网环境：将 pdf.worker.min.mjs 复制到 public/ 后取消注释下一行，并注释掉 CDN 那行
+// pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
 const NOISE_TYPES = new Set(['page_number', 'footer', 'header', 'aside_text'])
 
