@@ -11,7 +11,7 @@ function getBlockText(block: ContentBlock): string {
   return block.text ?? ''
 }
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 const NOISE_TYPES = new Set(['page_number', 'footer', 'header', 'aside_text'])
 
