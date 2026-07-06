@@ -1,18 +1,20 @@
 # MinerU Web Service
 
-基于本地 [MinerU](https://github.com/opendatalab/MinerU) 服务的文档智能解析平台。React 前端 + 轻量 FastAPI 后端，解析能力完全由 MinerU 本地服务承载，自建后端只做元数据存储与文件代理。
+基于 [MinerU](https://github.com/opendatalab/MinerU) 的文档智能解析平台。React 前端 + 轻量 FastAPI 后端，支持本地 MinerU 服务和 mineru.net 官方在线 API 两种解析来源，自建后端只做元数据存储、文件代理与结果落库。
 
 最终效果图：
 ![效果示意](web.png)
 
 ## 功能
 
-- 上传 PDF / 图片文件，自动调用本地 MinerU 服务解析
-- 左右双栏界面：左侧 PDF 原文渲染 + bbox 框选高亮，右侧解析内容
-- 基于 `middle_json` 的精确 bbox 对齐（原生页面坐标系）
+- 三种解析方式可选：**本地异步**（最新，`POST /tasks` 轮询）、**本地同步**（兼容 MinerU 2.7.6，`POST /file_parse`）、**在线 API**（mineru.net 官方云服务，无需本地部署 MinerU）
+- 左右双栏界面：左侧原文渲染（PDF / 图片）+ bbox 框选高亮，右侧解析内容
+- PDF 与图片均支持基于 `middle_json` 的精确 bbox 对齐（原生像素坐标）；没有 `middle_json` 时（如在线 API 解析结果）自动回退到 `content_list`（归一化坐标）
 - 支持文本、标题、列表、公式、表格、图片等内容块的差异化渲染
 - 页眉、页脚、旁注等边缘内容可隐藏/显示
+- 解析结果支持一键下载（Markdown / JSON）
 - JSON 原始数据查看器（CodeMirror 6）
+- 顶部实时显示本地 MinerU / MinIO 服务健康状态
 
 ## 架构
 
@@ -26,42 +28,52 @@ React 前端（开发：port 5173 / 生产：port 80）
 FastAPI 后端（port 8000）
     ├── SQLite（文件元数据 + 解析结果缓存）
     ├── MinIO（原文件对象存储，生成预签名 URL 供前端预览）
+    ├── GET /status（探活 MinerU + MinIO，供前端顶部状态指示器轮询）
     │
-    └── HTTP 调用
-         ▼
-    MinerU 本地服务（port 18000）
-         ├── POST /file_parse        同步解析（阻塞等待结果）
-         ├── POST /tasks             异步提交任务（立即返回 task_id）
-         ├── GET  /tasks/{task_id}   查询任务状态
-         └── GET  /docs              Swagger 文档
+    ├── 本地解析 → HTTP 调用 MinerU 本地服务（port 18000，直连，不走系统代理）
+    │    ├── POST /file_parse        同步解析（阻塞等待结果）
+    │    ├── POST /tasks             异步提交任务（立即返回 task_id）
+    │    ├── GET  /tasks/{task_id}   查询任务状态
+    │    ├── GET  /health            健康检查
+    │    └── GET  /docs              Swagger 文档
+    │
+    └── 在线解析 → HTTP 调用 mineru.net 官方云端 API
+         ├── POST /api/v4/file-urls/batch              注册批次，拿预签名上传地址
+         ├── PUT  <预签名地址>                          上传原文件（阿里云 OSS）
+         ├── GET  /api/v4/extract-results/batch/{id}    轮询解析状态
+         └── <full_zip_url>                             下载结果压缩包，后端解压入库
 ```
 
 **存储职责：**
 
 | 存储 | 存什么 | 用途 |
 |------|--------|------|
-| **MinIO** | 用户上传的原始文件（PDF / 图片） | 生成预签名 URL，供前端左侧 `react-pdf` / `<img>` 渲染原文件 |
-| **SQLite** | 文件元数据（filename、status、created_at 等） | 文件列表、历史记录、任务状态轮询 |
-| **SQLite** | 解析结果（`md_content`、`content_list`、`middle_json`，序列化为 TEXT） | 避免重复调用 MinerU，前端直接从后端取缓存 |
+| **MinIO** | 用户上传的原始文件（PDF / 图片） | 生成预签名 URL，供前端左侧 `react-pdf` / `<img>` 渲染原文件（三种解析方式共用） |
+| **SQLite** | 文件元数据（filename、status、created_at、mineru_task_id、cloud_batch_id 等） | 文件列表、历史记录、任务状态轮询 |
+| **SQLite** | 解析结果（`md_content`、`content_list`、`middle_json`，序列化为 TEXT） | 避免重复调用 MinerU / mineru.net，前端直接从后端取缓存 |
 
 **后端职责极简：**
 
-| 职责 | MinerU 承担 | 自建后端承担 |
+| 职责 | MinerU / mineru.net 承担 | 自建后端承担 |
 |------|------------|------------|
 | 文件解析（版面分析、OCR、公式、表格） | ✅ | 转发请求 |
-| 任务队列 | ✅ | ❌ |
+| 任务队列 / 轮询 | ✅ | 转发轮询 |
 | 解析结果（md / content_list / middle_json） | ✅ | 缓存到 SQLite |
+| 在线 API 结果压缩包解压 | ❌ | ✅ 后端内存解压（`zipfile`），图片转 base64 内嵌 |
 | 原文件存储 + 预览 URL | ❌ | ✅ MinIO |
 | 文件列表 / 历史记录 | ❌ | ✅ SQLite |
 
-**MinerU 版本兼容：**
+> **本地服务防坑提示**：如果本机配置了系统代理（如 Clash 等科学上网工具），Python 的 `httpx` 默认会读取系统代理设置，把原本该直连 `localhost:18000` 的请求也转发出去，代理处理不了"目标是本机自己"的请求会返回 `502 Bad Gateway`。本项目已在 `backend/app/services/mineru.py` 里对所有访问本地 MinerU 的请求加了 `trust_env=False` 保证直连；访问 mineru.net 的请求（`mineru_cloud.py`）保持默认，因为那是真实外网地址，可能需要代理才能访问。
 
-| 版本 | 接口 | 模式 | 说明 |
-|------|------|------|------|
-| 2.7.6 | `POST /file_parse` | 同步 | 阻塞等待 MinerU 返回完整结果，超时风险较高 |
-| 3.0 | `POST /tasks` + 轮询 | 异步 | 立即返回 task_id，后台轮询状态直到完成再取结果 |
+**三种解析方式对比：**
 
-前端上传页可切换版本，两套流程对应不同后端接口（`/files/upload` vs `/files/upload_async`），解析完成后的查看体验完全一致。
+| 模式 | 前端标签 | 接口 | 说明 |
+|------|---------|------|------|
+| 本地异步 | 最新版 | `POST /tasks` + 轮询 | 立即返回 task_id，后台轮询直到完成，推荐 |
+| 本地同步 | 兼容 2.7.6 | `POST /file_parse` | 阻塞等待 MinerU 返回完整结果，兼容没有 `/tasks` 接口的旧版 MinerU |
+| 在线 API | 在线 API | mineru.net 官方云服务 | 需要用户自备 mineru.net API Key（存前端 localStorage，不落后端库），无需本地部署 MinerU；解析结果没有 `middle_json`，查看器自动用 V1（`content_list`）渲染 |
+
+前端上传页可自由切换，三套流程分别对应 `/files/upload_async`、`/files/upload`、`/files/upload_cloud`，解析完成后的查看体验完全一致。
 
 
 ## 环境依赖
@@ -74,12 +86,14 @@ FastAPI 后端（port 8000）
 | Node.js | 18+   | 前端构建               |
 | pnpm    | 最新    | 前端包管理              |
 | MinIO   | —     | 原文件对象存储            |
-| MinerU  | —     | 本地解析服务（port 18000） |
+| MinerU  | —     | 本地解析服务（可选，仅"本地异步/本地同步"两种模式需要，port 18000） |
 
 
 ## 快速启动
 
 ### 1. 启动 MinerU 本地服务
+
+如果只使用"在线 API"模式解析，可跳过这一步，直接准备好 mineru.net 的 API Key。
 
 参考 [MinerU 官方文档](https://opendatalab.github.io/MinerU/zh/quick_start/docker_deployment/) 启动解析服务，确保 `http://localhost:18000/docs` 可访问。
 
@@ -136,6 +150,8 @@ uv run fastapi dev main.py
 
 后端 API 文档：`http://localhost:8000/docs`
 
+启动后可访问 `http://localhost:8000/status` 确认 MinerU / MinIO 是否都探活成功（前端右上角状态指示器数据来源就是这个接口）。
+
 ### 4. 启动前端
 
 ```bash
@@ -149,6 +165,8 @@ pnpm run dev
 ```
 
 访问：`http://localhost:5173`
+
+如果选择"在线 API"解析方式，需要在上传页填入 mineru.net 的 API Key（会自动保存到浏览器 localStorage，不会发送到除 mineru.net 以外的第三方）。
 
 > **离线 / 内网环境**：前端 PDF 预览默认从 `unpkg.com` 加载 PDF.js worker。若无法访问外网，可改为本地加载：
 >
@@ -164,7 +182,7 @@ pnpm run dev
 ```
 mineru-web-service/
 ├── backend/
-│   ├── main.py                    # FastAPI 入口，CORS 配置
+│   ├── main.py                    # FastAPI 入口，CORS 配置，GET /status 健康检查
 │   ├── pyproject.toml             # 依赖声明（uv）
 │   ├── .env.example               # 配置模板（复制为 .env 后修改）
 │   └── app/
@@ -173,27 +191,33 @@ mineru-web-service/
 │       ├── models.py              # SQLAlchemy ORM 模型
 │       ├── schemas.py             # Pydantic 请求/响应模型
 │       ├── routers/
-│       │   └── files.py           # 文件上传、查询、解析结果接口
+│       │   └── files.py           # 文件上传、查询、解析结果接口（本地/在线三种模式）
 │       └── services/
-│           ├── mineru.py          # MinerU API 调用（含图片 base64 回填）
-│           └── storage.py        # MinIO 文件存储
+│           ├── mineru.py          # 本地 MinerU API 调用（含图片 base64 回填、健康检查）
+│           ├── mineru_cloud.py    # 在线 API（mineru.net）调用：注册批次/上传/轮询/结果解压
+│           └── storage.py         # MinIO 文件存储 + 健康检查
 │
 ├── frontend/
 │   ├── vite.config.ts             # Vite 配置（/api 反向代理）
 │   ├── src/
 │   │   ├── types.ts               # TypeScript 类型定义
-│   │   ├── api/index.ts           # 后端 API 封装
+│   │   ├── api/
+│   │   │   ├── index.ts           # 后端 API 封装
+│   │   │   └── cloud.ts           # 在线 API Key 的本地存储读写
 │   │   ├── utils/
 │   │   │   └── parseMiddleJson.ts # middle_json → ParsedBlock[] 解析器
 │   │   ├── pages/
-│   │   │   ├── HomePage.tsx       # 文件上传
+│   │   │   ├── HomePage.tsx       # 文件上传（三种解析方式选择）
 │   │   │   ├── TaskListPage.tsx   # 历史记录列表
 │   │   │   └── TaskDetailPage.tsx # 解析结果双栏查看器
 │   │   └── components/
-│   │       ├── PDFViewerV2.tsx    # PDF 渲染 + bbox 高亮（middle_json）
+│   │       ├── PDFViewerV2.tsx    # PDF 渲染 + bbox 高亮（middle_json，原生坐标）
+│   │       ├── PDFViewer.tsx      # PDF 渲染 + bbox 高亮（content_list，归一化坐标）
 │   │       ├── ContentViewerV2.tsx# 内容块渲染（middle_json）
-│   │       ├── ImageViewer.tsx    # 图片文件查看器（content_list）
-│   │       ├── ContentViewer.tsx  # 图片文件内容渲染（content_list）
+│   │       ├── ContentViewer.tsx  # 内容块渲染（content_list）
+│   │       ├── ImageViewerV2.tsx  # 图片查看器 + bbox 高亮（middle_json，原生坐标）
+│   │       ├── ImageViewer.tsx    # 图片查看器 + bbox 高亮（content_list，归一化坐标）
+│   │       ├── SystemStatus.tsx   # 顶部 MinerU / MinIO 服务状态指示器
 │   │       └── JsonViewer.tsx     # JSON 数据查看器（CodeMirror 6）
 │   └── package.json
 │
@@ -205,15 +229,17 @@ mineru-web-service/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/files/upload` | 上传并同步解析（MinerU 2.7.6，`POST /file_parse`） |
-| `POST` | `/files/upload_async` | 上传并异步解析（MinerU 3.0，`POST /tasks` + 轮询） |
+| `POST` | `/files/upload` | 上传并同步解析（本地 MinerU，`POST /file_parse`，兼容 2.7.6） |
+| `POST` | `/files/upload_async` | 上传并异步解析（本地 MinerU，`POST /tasks` + 轮询，最新版） |
+| `POST` | `/files/upload_cloud` | 上传并使用在线 API（mineru.net）解析，需附带 `api_key` 表单字段 |
 | `GET` | `/files` | 文件列表 |
 | `GET` | `/files/{id}/result` | 文件详情 + 状态 |
 | `GET` | `/files/{id}/content_list` | 解析结果（content_list 格式） |
-| `GET` | `/files/{id}/middle_json` | 解析结果（middle_json 格式，含精确 bbox） |
+| `GET` | `/files/{id}/middle_json` | 解析结果（middle_json 格式，含精确 bbox，仅本地解析可能有） |
 | `GET` | `/files/{id}/download_url` | 原文件预签名下载 URL（MinIO 生成） |
-| `GET` | `/files/{id}/mineru_status` | 查询 MinerU 异步任务原始状态（3.0 模式专用） |
+| `GET` | `/files/{id}/mineru_status` | 查询本地 MinerU 异步任务原始状态（本地异步模式专用） |
 | `DELETE` | `/files/{id}` | 删除记录及 MinIO 文件 |
+| `GET` | `/status` | 探活本地 MinerU 服务与 MinIO，返回 `{mineru, minio}` |
 
 
 ## 技术栈
@@ -231,7 +257,7 @@ mineru-web-service/
 - FastAPI + Uvicorn
 - SQLAlchemy + SQLite
 - MinIO Python SDK
-- httpx（调用 MinerU）
+- httpx（调用本地 MinerU 与 mineru.net）
 
 ## License
 

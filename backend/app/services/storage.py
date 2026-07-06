@@ -18,6 +18,15 @@ def ensure_bucket():
         client.make_bucket(settings.minio_bucket)
 
 
+def check_health() -> bool:
+    """探活 MinIO 服务。网络异常都视为不可用。"""
+    try:
+        client.bucket_exists(settings.minio_bucket)
+        return True
+    except Exception:
+        return False
+
+
 def upload_file(object_name: str, file_bytes: bytes, content_type: str = "application/octet-stream"):
     ensure_bucket()
     client.put_object(

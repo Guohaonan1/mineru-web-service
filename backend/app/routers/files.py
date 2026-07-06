@@ -3,13 +3,14 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.models import File as FileModel
 from app.schemas import FileDetail, FileOut
-from app.services.mineru import fetch_task_result, get_task_status, parse_file, submit_task
+from app.services.mineru import check_health, fetch_task_result, get_task_status, parse_file, submit_task
+from app.services.mineru_cloud import fetch_and_parse_zip, get_batch_status, submit_batch, upload_file_to_slot
 from app.services.storage import delete_file, get_presigned_url, upload_file
 
 router = APIRouter()
@@ -21,6 +22,9 @@ async def run_parse(file_id: int, file_bytes: bytes, filename: str):
         file = db.query(FileModel).filter(FileModel.id == file_id).first()
         if not file:
             return
+
+        if not await check_health():
+            raise RuntimeError("本地 MinerU 服务不可用，请检查服务是否已启动")
 
         file.status = "running"
         file.updated_at = datetime.now(timezone.utc)
@@ -129,6 +133,9 @@ async def run_parse_async(file_id: int, file_bytes: bytes, filename: str):
         if not file:
             return
 
+        if not await check_health():
+            raise RuntimeError("本地 MinerU 服务不可用，请检查服务是否已启动")
+
         # 提交任务
         task_id = await submit_task(file_bytes, filename)
         file.mineru_task_id = task_id
@@ -188,6 +195,80 @@ async def upload_file_async_endpoint(
     db.refresh(db_file)
 
     background_tasks.add_task(run_parse_async, db_file.id, file_bytes, file.filename)
+    return db_file
+
+
+async def run_parse_cloud(file_id: int, file_bytes: bytes, filename: str, api_key: str):
+    """
+    在线 API 解析流程：注册批次、上传文件到预签名地址、轮询状态，完成后下载结果压缩包存库。
+    """
+    db = SessionLocal()
+    try:
+        file = db.query(FileModel).filter(FileModel.id == file_id).first()
+        if not file:
+            return
+
+        batch_id, upload_url = await submit_batch(api_key, filename)
+        file.cloud_batch_id = batch_id
+        file.status = "running"
+        file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+        await upload_file_to_slot(upload_url, file_bytes)
+
+        # 3s 间隔轮询，约 10 分钟超时（打的是外部网络，比本地异步流程多加一层超时保护）
+        item = None
+        for _ in range(200):
+            item = await get_batch_status(api_key, batch_id)
+            state = item.get("state")
+            if state == "done":
+                break
+            if state == "failed":
+                raise RuntimeError(item.get("err_msg") or "在线解析失败")
+            await asyncio.sleep(3)
+        else:
+            raise RuntimeError("轮询超时，请稍后重试")
+
+        parsed = await fetch_and_parse_zip(item["full_zip_url"])
+        file.status = "done"
+        file.result = parsed["md_content"]
+        file.content_list = json.dumps(parsed["content_list"], ensure_ascii=False)
+        file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    except Exception as e:
+        file.status = "failed"
+        file.error = str(e)
+        file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/upload_cloud", response_model=FileOut)
+async def upload_file_cloud_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    api_key: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """使用 MinerU 在线 API（mineru.net）解析文件，立即返回，后台轮询结果。"""
+    file_bytes = await file.read()
+
+    suffix = file.filename.rsplit(".", 1)[-1] if "." in file.filename else ""
+    object_name = f"{uuid.uuid4()}.{suffix}" if suffix else str(uuid.uuid4())
+
+    upload_file(object_name, file_bytes, file.content_type or "application/octet-stream")
+
+    db_file = FileModel(
+        filename=file.filename,
+        minio_path=object_name,
+        content_type=file.content_type,
+    )
+    db.add(db_file)
+    db.commit()
+    db.refresh(db_file)
+
+    background_tasks.add_task(run_parse_cloud, db_file.id, file_bytes, file.filename, api_key)
     return db_file
 
 

@@ -2,36 +2,55 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, FileText } from 'lucide-react'
 import { api } from '../api'
+import { getCloudApiKey, setCloudApiKey } from '../api/cloud'
 
 interface Props {
   onUploaded: () => void
 }
 
-type MinerUVersion = '2.7.6' | '3.0'
+type MinerUVersion = '2.7.6' | '3.0' | 'cloud'
 
 export default function HomePage({ onUploaded }: Props) {
   const navigate = useNavigate()
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadStep, setUploadStep] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState<MinerUVersion>('3.0')
+  const [cloudApiKey, setCloudApiKeyState] = useState(getCloudApiKey)
+
+  const saveCloudKey = (key: string) => {
+    setCloudApiKeyState(key)
+    setCloudApiKey(key)
+  }
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
     setUploading(true)
     setError(null)
+    setUploadStep('')
     try {
-      const result = version === '3.0'
-        ? await api.uploadAsync(files[0])
-        : await api.upload(files[0])
-      onUploaded()
-      navigate(`/tasks/${result.id}`)
+      if (version === 'cloud') {
+        if (!cloudApiKey) throw new Error('请填写在线 API Key')
+        setUploadStep('上传并解析中...')
+        const result = await api.uploadCloud(files[0], cloudApiKey)
+        onUploaded()
+        navigate(`/tasks/${result.id}`)
+      } else {
+        setUploadStep('上传并解析中...')
+        const result = version === '3.0'
+          ? await api.uploadAsync(files[0])
+          : await api.upload(files[0])
+        onUploaded()
+        navigate(`/tasks/${result.id}`)
+      }
     } catch (e: any) {
       setError(e.message)
     } finally {
       setUploading(false)
+      setUploadStep('')
     }
-  }, [navigate, onUploaded, version])
+  }, [navigate, onUploaded, version, cloudApiKey])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -45,25 +64,45 @@ export default function HomePage({ onUploaded }: Props) {
         <h1 className="text-2xl font-semibold text-gray-800 mb-2">智能文档解析</h1>
         <p className="text-gray-500 text-sm mb-8">支持 PDF、图片等格式，自动提取文本、表格和公式</p>
 
-        {/* MinerU 版本选择 */}
-        <div className="flex items-center justify-center gap-1 mb-5 p-1 bg-white border border-gray-200 rounded-lg w-fit mx-auto">
-          {(['2.7.6', '3.0'] as MinerUVersion[]).map((v) => (
+        {/* 版本选择 */}
+        <div className="flex items-center justify-center gap-1 mb-3 p-1 bg-white border border-gray-200 rounded-lg w-fit mx-auto">
+          {([
+            { key: '3.0',   label: '最新版' },
+            { key: '2.7.6', label: '兼容 2.7.6' },
+            { key: 'cloud', label: '在线 API' },
+          ] as { key: MinerUVersion; label: string }[]).map(({ key, label }) => (
             <button
-              key={v}
-              onClick={() => setVersion(v)}
+              key={key}
+              onClick={() => setVersion(key)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                version === v
+                version === key
                   ? 'bg-blue-500 text-white shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              MinerU {v}
+              {label}
             </button>
           ))}
         </div>
-        <p className="text-xs text-gray-400 mb-4 -mt-3">
-          {version === '3.0' ? '异步任务模式（POST /tasks）' : '同步解析模式（POST /file_parse）'}
+        <p className="text-xs text-gray-400 mb-4">
+          {version === 'cloud'
+            ? '直接调用 mineru.net，不经过本地服务'
+            : version === '3.0'
+              ? '异步任务模式（POST /tasks）'
+              : '同步解析模式（POST /file_parse）'}
         </p>
+
+        {/* 在线 API Key（始终占位，非在线模式时隐藏）*/}
+        <div className={`mb-4 flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 ${version !== 'cloud' ? 'invisible' : ''}`}>
+          <span className="text-xs text-gray-400 whitespace-nowrap">API Key</span>
+          <input
+            type="password"
+            value={cloudApiKey}
+            onChange={e => saveCloudKey(e.target.value)}
+            placeholder="Bearer token（自动保存到本地）"
+            className="flex-1 text-xs outline-none bg-transparent placeholder-gray-300"
+          />
+        </div>
 
         {/* 拖拽上传区 */}
         <label
@@ -86,7 +125,7 @@ export default function HomePage({ onUploaded }: Props) {
           {uploading ? (
             <div className="flex flex-col items-center gap-3 text-blue-500">
               <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">上传并解析中...</span>
+              <span className="text-sm">{uploadStep || '处理中...'}</span>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 text-gray-400">

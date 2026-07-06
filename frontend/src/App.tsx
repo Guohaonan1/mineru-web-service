@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
+import SystemStatus from './components/SystemStatus'
 import HomePage from './pages/HomePage'
 import TaskListPage from './pages/TaskListPage'
 import TaskDetailPage from './pages/TaskDetailPage'
@@ -27,6 +28,7 @@ function AppShell() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
+      <SystemStatus />
       <Sidebar files={files} />
       <main className="flex-1 flex overflow-hidden">
         <Routes>

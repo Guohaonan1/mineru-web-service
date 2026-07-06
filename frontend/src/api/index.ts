@@ -24,6 +24,13 @@ export const api = {
     return request('/files/upload_async', { method: 'POST', body: form })
   },
 
+  uploadCloud(file: File, apiKey: string): Promise<FileItem> {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('api_key', apiKey)
+    return request('/files/upload_cloud', { method: 'POST', body: form })
+  },
+
   listFiles(): Promise<FileItem[]> {
     return request('/files')
   },
@@ -50,5 +57,9 @@ export const api = {
 
   deleteFile(id: number): Promise<{ msg: string }> {
     return request(`/files/${id}`, { method: 'DELETE' })
+  },
+
+  getSystemStatus(): Promise<{ mineru: boolean; minio: boolean }> {
+    return request('/status')
   },
 }

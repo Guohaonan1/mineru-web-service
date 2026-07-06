@@ -13,10 +13,13 @@ export default function Sidebar({ files }: Props) {
   return (
     <aside className="w-60 flex flex-col bg-white text-gray-700 shrink-0 h-screen border-r border-gray-200">
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-gray-100">
+      <button
+        onClick={() => navigate('/')}
+        className="px-4 py-5 border-b border-gray-100 text-left hover:bg-gray-50 transition-colors"
+      >
         <span className="text-gray-900 font-semibold text-base">mineru-web</span>
         <span className="ml-1 text-xs text-gray-400">文档解析</span>
-      </div>
+      </button>
 
       {/* 新建解析 */}
       <div className="px-3 pt-4">

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { RefreshCw, Eye, EyeOff, Download } from 'lucide-react'
 import { api } from '../api'
 import type { ContentBlock, FileDetail, MiddleJsonData } from '../types'
 import { parseMiddleJson } from '../utils/parseMiddleJson'
 import StatusBadge from '../components/StatusBadge'
+import PDFViewer from '../components/PDFViewer'
 import PDFViewerV2 from '../components/PDFViewerV2'
 import ImageViewer from '../components/ImageViewer'
+import ImageViewerV2 from '../components/ImageViewerV2'
 import ContentViewer from '../components/ContentViewer'
 import ContentViewerV2 from '../components/ContentViewerV2'
 import JsonViewer from '../components/JsonViewer'
@@ -85,10 +87,14 @@ export default function TaskDetailPage() {
     ? (file.content_type?.startsWith('image/') ?? /\.(png|jpe?g|gif|bmp|webp|tiff?)$/i.test(file.filename))
     : false
 
+  // middle_json 在线 API 解析出来的 PDF 没有；图片有没有则看本地服务是否返回。
+  // 只要 middle_json 存在就优先用 V2 组件（原生像素坐标），没有时回退 V1（content_list）。
+  const useV2 = middleJson != null
+
   const parsedBlocks = useMemo(() => {
-    if (!middleJson || isImage) return []
-    return parseMiddleJson(middleJson)
-  }, [middleJson, isImage])
+    if (!useV2) return []
+    return parseMiddleJson(middleJson!)
+  }, [middleJson, useV2])
 
   if (loading) {
     return (
@@ -101,7 +107,22 @@ export default function TaskDetailPage() {
   if (!file) return null
 
   const isParsing = file.status === 'pending' || file.status === 'running'
-  const hasResults = isImage ? blocks.length > 0 : parsedBlocks.length > 0
+  const hasResults = useV2 ? parsedBlocks.length > 0 : blocks.length > 0
+
+  const handleDownloadResult = () => {
+    const base = file.filename.replace(/\.[^/.]+$/, '')
+    const isJson = resultView === 'json'
+    const content = isJson
+      ? JSON.stringify({ content_list: blocks, middle_json: middleJson }, null, 2)
+      : file.result ?? ''
+    const blob = new Blob([content], { type: isJson ? 'application/json' : 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${base}.${isJson ? 'json' : 'md'}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -140,9 +161,39 @@ export default function TaskDetailPage() {
               </div>
             ) : downloadUrl ? (
               isImage ? (
-                <ImageViewer
+                useV2 ? (
+                  <ImageViewerV2
+                    url={downloadUrl}
+                    blocks={parsedBlocks}
+                    activeIndex={activeIndex}
+                    onBlockClick={setActiveIndex}
+                    hiddenBlocks={hiddenBlocks}
+                    showAllBoxes={showAllBoxes}
+                    onToggleHidden={(i) => setHiddenBlocks(prev => {
+                      const next = new Set(prev)
+                      next.has(i) ? next.delete(i) : next.add(i)
+                      return next
+                    })}
+                  />
+                ) : (
+                  <ImageViewer
+                    url={downloadUrl}
+                    blocks={blocks}
+                    activeIndex={activeIndex}
+                    onBlockClick={setActiveIndex}
+                    hiddenBlocks={hiddenBlocks}
+                    showAllBoxes={showAllBoxes}
+                    onToggleHidden={(i) => setHiddenBlocks(prev => {
+                      const next = new Set(prev)
+                      next.has(i) ? next.delete(i) : next.add(i)
+                      return next
+                    })}
+                  />
+                )
+              ) : useV2 ? (
+                <PDFViewerV2
                   url={downloadUrl}
-                  blocks={blocks}
+                  blocks={parsedBlocks}
                   activeIndex={activeIndex}
                   onBlockClick={setActiveIndex}
                   hiddenBlocks={hiddenBlocks}
@@ -154,9 +205,9 @@ export default function TaskDetailPage() {
                   })}
                 />
               ) : (
-                <PDFViewerV2
+                <PDFViewer
                   url={downloadUrl}
-                  blocks={parsedBlocks}
+                  blocks={blocks}
                   activeIndex={activeIndex}
                   onBlockClick={setActiveIndex}
                   hiddenBlocks={hiddenBlocks}
@@ -181,18 +232,28 @@ export default function TaskDetailPage() {
           <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-gray-50 shrink-0">
             <span className="text-xs text-gray-500">解析结果</span>
             {hasResults && (
-              <div className="flex text-xs rounded overflow-hidden border border-gray-200">
+              <div className="flex items-center gap-2">
+                <div className="flex text-xs rounded overflow-hidden border border-gray-200">
+                  <button
+                    onClick={() => setResultView('markdown')}
+                    className={`px-2.5 py-1 transition-colors ${resultView === 'markdown' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    Markdown
+                  </button>
+                  <button
+                    onClick={() => setResultView('json')}
+                    className={`px-2.5 py-1 transition-colors ${resultView === 'json' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    JSON
+                  </button>
+                </div>
                 <button
-                  onClick={() => setResultView('markdown')}
-                  className={`px-2.5 py-1 transition-colors ${resultView === 'markdown' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  onClick={handleDownloadResult}
+                  title="下载解析结果"
+                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-white text-gray-500 hover:bg-gray-100 border border-gray-200 transition-colors"
                 >
-                  Markdown
-                </button>
-                <button
-                  onClick={() => setResultView('json')}
-                  className={`px-2.5 py-1 transition-colors ${resultView === 'json' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                >
-                  JSON
+                  <Download size={12} />
+                  下载
                 </button>
               </div>
             )}
@@ -210,16 +271,16 @@ export default function TaskDetailPage() {
             ) : hasResults ? (
               resultView === 'json' ? (
                 <JsonViewer value={{ content_list: blocks, middle_json: middleJson }} />
-              ) : isImage ? (
-                <ContentViewer
-                  blocks={blocks}
+              ) : useV2 ? (
+                <ContentViewerV2
+                  blocks={parsedBlocks}
                   activeIndex={activeIndex}
                   onBlockClick={setActiveIndex}
                   hiddenBlocks={hiddenBlocks}
                 />
               ) : (
-                <ContentViewerV2
-                  blocks={parsedBlocks}
+                <ContentViewer
+                  blocks={blocks}
                   activeIndex={activeIndex}
                   onBlockClick={setActiveIndex}
                   hiddenBlocks={hiddenBlocks}

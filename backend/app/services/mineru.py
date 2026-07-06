@@ -32,12 +32,24 @@ def _is_image(filename: str) -> bool:
     return ext in _IMAGE_SUFFIXES
 
 
+async def check_health() -> bool:
+    """
+    探活本地 MinerU 服务（GET /health）。网络异常或非 200 都视为不可用。
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
+            response = await client.get(f"{MINERU_URL}/health")
+            return response.status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
 async def submit_task(file_bytes: bytes, filename: str) -> str:
     """
     提交异步解析任务（POST /tasks），立即返回 MinerU task_id。
     """
     form_data = {"return_content_list": "1", "return_middle_json": "1", "return_images": "1"}
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
         response = await client.post(
             f"{MINERU_URL}/tasks",
             files={"files": (filename, file_bytes)},
@@ -59,7 +71,7 @@ async def get_task_status(task_id: str) -> dict:
     查询异步任务状态（GET /tasks/{task_id}）。
     返回原始状态载荷，status 字段为 pending / processing / completed / failed。
     """
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
         response = await client.get(f"{MINERU_URL}/tasks/{task_id}")
         response.raise_for_status()
         return response.json()
@@ -70,7 +82,7 @@ async def fetch_task_result(task_id: str, filename: str) -> dict:
     获取已完成任务的解析结果（GET /tasks/{task_id}/result）。
     返回格式与 parse_file 一致：{"md_content", "content_list", "middle_json"}。
     """
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
         response = await client.get(f"{MINERU_URL}/tasks/{task_id}/result")
         response.raise_for_status()
         data = response.json()
@@ -136,7 +148,7 @@ async def parse_file(file_bytes: bytes, filename: str) -> dict:
     """
     form_data: dict = {"return_content_list": "1", "return_middle_json": "1", "return_images": "1"}
 
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=300, trust_env=False) as client:
         response = await client.post(
             f"{MINERU_URL}/file_parse",
             files={"files": (filename, file_bytes)},
