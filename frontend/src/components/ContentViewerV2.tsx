@@ -1,5 +1,14 @@
 import { useEffect, useRef } from 'react'
 import type { ParsedBlock } from '../types'
+import Markdown from './Markdown'
+import { renderTableEquations } from '../utils/renderTableEquations'
+
+// middle_json 的 bbox 是原生像素坐标，图片按 bbox 宽度相对 page_size 宽度的占比
+// 动态算显示宽度，而不是写死一个百分比
+function imageWidthPercent(bbox: [number, number, number, number], page_size: [number, number]): number {
+  const ratio = (bbox[2] - bbox[0]) / page_size[0] * 100
+  return Math.min(100, Math.max(10, ratio))
+}
 
 interface Props {
   blocks: ParsedBlock[]
@@ -13,14 +22,14 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
     case 'title':
       return (
         <h2 className="text-[1.05rem] font-semibold text-gray-800 mt-5 mb-2 leading-snug">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </h2>
       )
 
     case 'text':
       return (
         <p className="text-[0.875rem] leading-[1.75] text-gray-700">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </p>
       )
 
@@ -29,7 +38,7 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
         <ul className="my-2 space-y-1 pl-5">
           {block.text?.split('\n').map((item, i) => (
             <li key={i} className="text-[0.875rem] leading-[1.75] text-gray-700 list-disc">
-              {item}
+              <Markdown text={item} />
             </li>
           ))}
         </ul>
@@ -38,26 +47,26 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
     case 'ref_text':
       return (
         <p className="text-[0.75rem] text-gray-400 leading-relaxed border-t border-gray-100 pt-2 mt-2">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </p>
       )
 
     case 'interline_equation':
       return (
         <div
-          className="my-3 px-4 py-3 rounded-lg font-mono text-[0.8rem] overflow-x-auto whitespace-pre-wrap transition-all"
+          className="my-3 px-4 py-3 rounded-lg text-[0.8rem] overflow-x-auto transition-all"
           style={isActive
             ? { background: 'rgba(230,122,171,0.15)', border: '1px solid rgba(230,122,171,0.7)', color: '#b5446e' }
-            : { color: '#6b7280' }
+            : { color: '#374151' }
           }
         >
-          {block.latex ?? block.text}
+          <Markdown text={block.latex ?? block.text ?? ''} />
         </div>
       )
 
     case 'table_caption':
       return (
-        <p className="text-[0.875rem] leading-[1.75] text-gray-700">{block.text}</p>
+        <p className="text-[0.875rem] leading-[1.75] text-gray-700"><Markdown text={block.text ?? ''} /></p>
       )
 
     case 'table':
@@ -68,12 +77,12 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
         >
           {block.html ? (
             <div
-              className="text-[0.8rem]
-                [&_table]:w-max [&_table]:min-w-full [&_table]:border-collapse
-                [&_th]:px-3 [&_th]:py-2 [&_th]:bg-gray-50 [&_th]:text-gray-600 [&_th]:font-medium [&_th]:text-left [&_th]:border [&_th]:border-gray-400
-                [&_td]:px-3 [&_td]:py-2 [&_td]:text-gray-700 [&_td]:border [&_td]:border-gray-400
+              className="text-[0.75rem]
+                [&_table]:w-full [&_table]:border-collapse
+                [&_th]:px-2 [&_th]:py-1 [&_th]:bg-gray-50 [&_th]:text-gray-600 [&_th]:font-medium [&_th]:text-left [&_th]:border [&_th]:border-gray-400 [&_th]:whitespace-normal [&_th]:break-words
+                [&_td]:px-2 [&_td]:py-1 [&_td]:text-gray-700 [&_td]:border [&_td]:border-gray-400 [&_td]:whitespace-normal [&_td]:break-words
                 [&_tr:hover_td]:bg-gray-50"
-              dangerouslySetInnerHTML={{ __html: block.html }}
+              dangerouslySetInnerHTML={{ __html: renderTableEquations(block.html) }}
             />
           ) : (
             <div className="text-xs text-gray-400 italic py-2">表格（图片格式）</div>
@@ -91,7 +100,7 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
             <img
               src={block.img_path}
               alt=""
-              style={{ width: '36%', display: 'block', marginLeft: '50%', transform: 'translate(-50%)' }}
+              style={{ width: `${imageWidthPercent(block.bbox, block.page_size)}%`, display: 'block', marginLeft: '50%', transform: 'translate(-50%)' }}
             />
           ) : (
             <div className="rounded-lg border border-dashed px-4 py-3" style={{ borderColor: 'rgba(139,92,246,0.4)' }}>
@@ -104,12 +113,12 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
     case 'image_caption':
       return (
         <p className="text-xs text-center mb-3 italic" style={{ color: '#8b5cf6' }}>
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </p>
       )
 
     default:
-      return <p className="text-[0.875rem] text-gray-500">{block.text}</p>
+      return <p className="text-[0.875rem] text-gray-500"><Markdown text={block.text ?? ''} /></p>
   }
 }
 

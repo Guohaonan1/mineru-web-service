@@ -1,7 +1,18 @@
 import { useEffect, useRef } from 'react'
 import type { ContentBlock } from '../types'
+import Markdown from './Markdown'
+import { renderTableEquations } from '../utils/renderTableEquations'
 
 const NOISE_TYPES = new Set(['page_number', 'footer', 'header', 'aside_text'])
+
+// content_list 的 bbox 用的是跟 PDF 相同的固定正方形坐标系（≈991.7），
+// 图片按 bbox 宽度相对这个正方形的占比动态算显示宽度，而不是写死一个百分比
+const MINERU_N = 595 * (120 / 72)
+
+function imageWidthPercent(bbox: [number, number, number, number]): number {
+  const ratio = (bbox[2] - bbox[0]) / MINERU_N * 100
+  return Math.min(100, Math.max(10, ratio))
+}
 
 interface Props {
   blocks: ContentBlock[]
@@ -16,22 +27,22 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
       const level = block.text_level
       if (level === 1) return (
         <h1 className="text-[1.25rem] font-bold text-gray-900 mt-6 mb-3 leading-snug border-b border-gray-100 pb-2">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </h1>
       )
       if (level === 2) return (
         <h2 className="text-[1.05rem] font-semibold text-gray-800 mt-5 mb-2 leading-snug">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </h2>
       )
       if (level === 3) return (
         <h3 className="text-[0.95rem] font-semibold text-gray-700 mt-4 mb-1.5">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </h3>
       )
       return (
         <p className="text-[0.875rem] leading-[1.75] text-gray-700">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </p>
       )
     }
@@ -39,13 +50,13 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
     case 'equation':
       return (
         <div
-          className="my-3 px-4 py-3 rounded-lg font-mono text-[0.8rem] overflow-x-auto whitespace-pre-wrap transition-all"
+          className="my-3 px-4 py-3 rounded-lg text-[0.8rem] overflow-x-auto transition-all"
           style={isActive
             ? { background: 'rgba(230,122,171,0.15)', border: '1px solid rgba(230,122,171,0.7)', color: '#b5446e' }
-            : { color: '#6b7280' }
+            : { color: '#374151' }
           }
         >
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </div>
       )
 
@@ -54,7 +65,7 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
         <ul className="my-2 space-y-1.5 pl-5">
           {block.list_items?.map((item, i) => (
             <li key={i} className="text-[0.875rem] leading-[1.75] text-gray-700 list-disc">
-              {item}
+              <Markdown text={item} />
             </li>
           ))}
         </ul>
@@ -64,17 +75,17 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
       return (
         <div className="my-3 overflow-x-auto transition-all rounded-lg" style={isActive ? { outline: '1px solid rgba(16,185,129,0.7)', background: 'rgba(16,185,129,0.06)' } : undefined}>
           {block.table_caption && block.table_caption.length > 0 && (
-            <p className="text-xs text-gray-500 mb-2 italic">{block.table_caption[0]}</p>
+            <p className="text-xs text-gray-500 mb-2 italic"><Markdown text={block.table_caption[0]} /></p>
           )}
           {block.table_body ? (
             <div
-              className="text-[0.8rem] rounded-lg overflow-hidden border border-gray-200
+              className="text-[0.75rem] rounded-lg overflow-hidden border border-gray-200
                 [&_table]:w-full [&_table]:border-collapse
-                [&_th]:px-3 [&_th]:py-2 [&_th]:bg-gray-50 [&_th]:text-gray-600 [&_th]:font-medium [&_th]:text-left [&_th]:border-b [&_th]:border-gray-200
-                [&_td]:px-3 [&_td]:py-2 [&_td]:text-gray-700 [&_td]:border-b [&_td]:border-gray-100
+                [&_th]:px-2 [&_th]:py-1 [&_th]:bg-gray-50 [&_th]:text-gray-600 [&_th]:font-medium [&_th]:text-left [&_th]:border-b [&_th]:border-gray-200 [&_th]:whitespace-normal [&_th]:break-words
+                [&_td]:px-2 [&_td]:py-1 [&_td]:text-gray-700 [&_td]:border-b [&_td]:border-gray-100 [&_td]:whitespace-normal [&_td]:break-words
                 [&_tr:last-child_td]:border-b-0
                 [&_tr:hover_td]:bg-gray-50"
-              dangerouslySetInnerHTML={{ __html: block.table_body }}
+              dangerouslySetInnerHTML={{ __html: renderTableEquations(block.table_body) }}
             />
           ) : (
             <div className="text-xs text-gray-400 italic py-2">表格（图片格式）</div>
@@ -92,7 +103,7 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
             <img
               src={block.img_path}
               alt={block.image_caption?.[0] ?? ''}
-              style={{ width: '36%', display: 'block', marginLeft: '50%', transform: 'translate(-50%)' }}
+              style={{ width: `${imageWidthPercent(block.bbox)}%`, display: 'block', marginLeft: '50%', transform: 'translate(-50%)' }}
             />
           ) : (
             <div className="rounded-lg border border-dashed px-4 py-3" style={{ borderColor: 'rgba(139,92,246,0.4)' }}>
@@ -100,7 +111,7 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
             </div>
           )}
           {block.image_caption && block.image_caption.length > 0 && (
-            <p className="text-xs text-center mt-1.5 italic" style={{ color: '#8b5cf6' }}>{block.image_caption[0]}</p>
+            <p className="text-xs text-center mt-1.5 italic" style={{ color: '#8b5cf6' }}><Markdown text={block.image_caption[0]} /></p>
           )}
         </div>
       )
@@ -108,7 +119,7 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
     case 'page_footnote':
       return (
         <p className="text-[0.75rem] text-gray-400 leading-relaxed border-t border-gray-100 pt-2 mt-2">
-          {block.text}
+          <Markdown text={block.text ?? ''} />
         </p>
       )
 
@@ -126,7 +137,7 @@ function BlockContent({ block, isActive }: { block: ContentBlock; isActive: bool
       )
 
     default:
-      return <p className="text-[0.875rem] text-gray-500">{block.text}</p>
+      return <p className="text-[0.875rem] text-gray-500"><Markdown text={block.text ?? ''} /></p>
   }
 }
 

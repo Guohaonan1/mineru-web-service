@@ -10,7 +10,9 @@
 - 三种解析方式可选：**本地异步**（最新，`POST /tasks` 轮询）、**本地同步**（兼容 MinerU 2.7.6，`POST /file_parse`）、**在线 API**（mineru.net 官方云服务，无需本地部署 MinerU）
 - 左右双栏界面：左侧原文渲染（PDF / 图片）+ bbox 框选高亮，右侧解析内容
 - PDF 与图片均支持基于 `middle_json` 的精确 bbox 对齐（原生像素坐标）；没有 `middle_json` 时（如在线 API 解析结果）自动回退到 `content_list`（归一化坐标）
-- 支持文本、标题、列表、公式、表格、图片等内容块的差异化渲染
+- 支持文本、标题、列表、公式、表格、图片、图表（chart）等内容块的差异化渲染
+- 每个文本 block 走真正的 markdown 渲染（加粗/斜体/行内代码/裸链接自动转 `<a>` 等），公式（行内 `$...$` 与块级 `$$...$$`，含表格内公式）用 KaTeX 排版，跟 mineru.net 官网的渲染方式对齐
+- 图片 / 图表按 `bbox` 相对页面宽度的实际比例动态显示大小，不是固定尺寸
 - 页眉、页脚、旁注等边缘内容可隐藏/显示
 - 解析结果支持一键下载（Markdown / JSON）
 - JSON 原始数据查看器（CodeMirror 6）
@@ -75,6 +77,7 @@ FastAPI 后端（port 8000）
 
 前端上传页可自由切换，三套流程分别对应 `/files/upload_async`、`/files/upload`、`/files/upload_cloud`，解析完成后的查看体验完全一致。
 
+内容渲染细节（markdown / 公式 / 表格 / chart / 图片宽度）见 [`frontend/README.md`](frontend/README.md#内容渲染)。
 
 ## 环境依赖
 
@@ -205,7 +208,8 @@ mineru-web-service/
 │   │   │   ├── index.ts           # 后端 API 封装
 │   │   │   └── cloud.ts           # 在线 API Key 的本地存储读写
 │   │   ├── utils/
-│   │   │   └── parseMiddleJson.ts # middle_json → ParsedBlock[] 解析器
+│   │   │   ├── parseMiddleJson.ts      # middle_json → ParsedBlock[] 解析器（含 chart 映射、公式 $ 包裹）
+│   │   │   └── renderTableEquations.ts # 表格 HTML 里的 <eq> 标签替换成 KaTeX 渲染结果
 │   │   ├── pages/
 │   │   │   ├── HomePage.tsx       # 文件上传（三种解析方式选择）
 │   │   │   ├── TaskListPage.tsx   # 历史记录列表
@@ -217,6 +221,7 @@ mineru-web-service/
 │   │       ├── ContentViewer.tsx  # 内容块渲染（content_list）
 │   │       ├── ImageViewerV2.tsx  # 图片查看器 + bbox 高亮（middle_json，原生坐标）
 │   │       ├── ImageViewer.tsx    # 图片查看器 + bbox 高亮（content_list，归一化坐标）
+│   │       ├── Markdown.tsx       # 行内 markdown + 公式渲染（react-markdown/remark-math/rehype-katex）
 │   │       ├── SystemStatus.tsx   # 顶部 MinerU / MinIO 服务状态指示器
 │   │       └── JsonViewer.tsx     # JSON 数据查看器（CodeMirror 6）
 │   └── package.json
@@ -249,6 +254,7 @@ mineru-web-service/
 - React 19 + TypeScript + Vite 8
 - Tailwind CSS 4
 - react-pdf（PDF 渲染）
+- react-markdown + remark-gfm + remark-math + rehype-katex + katex（内容 markdown / 公式渲染）
 - @uiw/react-codemirror（JSON 查看器）
 - lucide-react（图标）
 

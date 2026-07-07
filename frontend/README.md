@@ -31,6 +31,16 @@ docker compose -f compose.yaml --profile api up -d
 - Vite
 - 对接 MinerU REST API（`POST /tasks`、`GET /tasks/{id}/result` 等）
 
+## 内容渲染
+
+`ContentViewer`/`ContentViewerV2` 对每个 block 的渲染方式参考了 mineru.net 官网右侧结果面板的实现（逐 block 单独 markdown 渲染 + `bbox` 定位联动高亮，而不是整篇丢给 markdown 渲染器）：
+
+- **文本类 block**：统一走 `src/components/Markdown.tsx`（基于 `react-markdown`），支持加粗、斜体、行内代码、裸邮箱/裸链接自动转 `<a>`（`remark-gfm`）
+- **公式**：`content_list`/`middle_json` 里的公式文本本身是 `$...$`（行内）/`$$...$$`（块级）包着的 LaTeX，靠 `remark-math` 识别语法、`rehype-katex` + `katex` 渲染成正式排版。`middle_json` 里 `inline_equation`/`interline_equation` 类型的 span 内容是**裸 LaTeX（没有 `$` 包裹）**，`src/utils/parseMiddleJson.ts` 里做了手动包裹处理，跟 `content_list` 里已经预先包好 `$` 的情况保持一致
+- **表格内公式**：MinerU 返回的表格 HTML 里公式用非标准的 `<eq>LaTeX</eq>` 标签包裹，浏览器不认识这个标签会导致公式显示成纯文本。`src/utils/renderTableEquations.ts` 会在表格 HTML 注入 DOM 前，把所有 `<eq>...</eq>` 替换成 `katex.renderToString()` 渲染出的 HTML
+- **chart（图表）**：`middle_json` 里除了 `image` 还有一种同构但命名不同的 `chart` 类型（`chart_body` + 一到两个 `chart_caption`），`src/utils/parseMiddleJson.ts` 按原始顺序解析后统一映射成 `image`/`image_caption` 渲染，视觉上没有区别
+- **图片/图表宽度**：不是固定百分比，而是按 `bbox` 宽度相对页面宽度（V1 用 `content_list` 的固定正方形坐标系 ≈991.7；V2 用 `middle_json` 的真实 `page_size`）算出的比例动态设置，居中方式（`margin-left:50% + translateX(-50%)`）跟官网一致
+
 ## MinerU API 一览
 
 | 方法 | 路径 | 说明 |

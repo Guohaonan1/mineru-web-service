@@ -1,8 +1,15 @@
 import type { MiddleJsonData, MjBlock, MjLine, ParsedBlock } from '../types'
 
+function spanText(span: MjLine['spans'][number]): string {
+  const content = span.content ?? ''
+  // 行内公式：middle_json 里 content 是裸 LaTeX，没有 $ 包裹，
+  // 要手动包一层 $...$ 才能被 remark-math/KaTeX 识别渲染（V1 的 content_list 已经预先包好了）
+  return span.type === 'inline_equation' && content ? `$${content}$` : content
+}
+
 function spansText(lines: MjLine[] = []): string {
   return lines
-    .map(l => l.spans.map(s => s.content ?? '').join(' '))
+    .map(l => l.spans.map(spanText).join(' '))
     .join(' ')
     .trim()
 }
@@ -31,13 +38,15 @@ function processBlock(
 
   if (type === 'interline_equation') {
     const span = block.lines?.[0]?.spans?.[0]
+    // 跟行内公式一样，middle_json 里 content 是裸 LaTeX，要包一层 $$...$$ 才能被
+    // remark-math/KaTeX 识别成块级公式渲染（V1 的 content_list 已经预先包好了）
     out.push({
       index: out.length,
       page_idx,
       page_size,
       type: 'interline_equation',
       bbox: block.bbox,
-      latex: span?.content,
+      latex: span?.content ? `$$\n${span.content}\n$$` : undefined,
       img_path: span?.image_path,
       discarded,
     })
@@ -99,6 +108,37 @@ function processBlock(
         text: spansText(captionBlock.lines),
         discarded,
       })
+    }
+    return
+  }
+
+  // chart：结构跟 image 一样（chart_body + chart_caption），只是 MinerU 换了个名字，
+  // 而且 caption 可能前后各出现一次（简短标题 + 完整图注），按原始顺序逐个处理，
+  // 复用 image/image_caption 类型渲染（视觉上跟普通图片没有区别）。
+  if (type === 'chart') {
+    for (const sub of block.blocks ?? []) {
+      if (sub.type === 'chart_body') {
+        const imgSpan = sub.lines?.[0]?.spans?.find(s => s.image_path)
+        out.push({
+          index: out.length,
+          page_idx,
+          page_size,
+          type: 'image',
+          bbox: sub.bbox,
+          img_path: imgSpan?.image_path,
+          discarded,
+        })
+      } else if (sub.type === 'chart_caption') {
+        out.push({
+          index: out.length,
+          page_idx,
+          page_size,
+          type: 'image_caption',
+          bbox: sub.bbox,
+          text: spansText(sub.lines),
+          discarded,
+        })
+      }
     }
     return
   }
