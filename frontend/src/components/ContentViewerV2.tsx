@@ -76,14 +76,17 @@ function BlockContent({ block, isActive }: { block: ParsedBlock; isActive: boole
           style={isActive ? { outline: '1px solid rgba(16,185,129,0.7)', background: 'rgba(16,185,129,0.06)' } : undefined}
         >
           {block.html ? (
-            <div
-              className="text-[0.75rem]
+            <div className="text-[0.75rem]
                 [&_table]:w-full [&_table]:border-collapse
                 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-gray-50 [&_th]:text-gray-600 [&_th]:font-medium [&_th]:text-left [&_th]:border [&_th]:border-gray-400 [&_th]:whitespace-normal [&_th]:break-words
                 [&_td]:px-2 [&_td]:py-1 [&_td]:text-gray-700 [&_td]:border [&_td]:border-gray-400 [&_td]:whitespace-normal [&_td]:break-words
-                [&_tr:hover_td]:bg-gray-50"
-              dangerouslySetInnerHTML={{ __html: renderTableEquations(block.html) }}
-            />
+                [&_tr:hover_td]:bg-gray-50">
+              {block.html.trimStart().startsWith('<table') ? (
+                <div dangerouslySetInnerHTML={{ __html: renderTableEquations(block.html) }} />
+              ) : (
+                <Markdown text={block.html} />
+              )}
+            </div>
           ) : (
             <div className="text-xs text-gray-400 italic py-2">表格（图片格式）</div>
           )}
@@ -131,19 +134,15 @@ export default function ContentViewerV2({ blocks, activeIndex, onBlockClick, hid
   }, [activeIndex])
 
   const safeBlocks = Array.isArray(blocks) ? blocks : []
-
-  let lastPageIdx = -1
+  const visibleBlocks = safeBlocks.filter(block => !hiddenBlocks.has(block.index))
 
   return (
     <div className="h-full overflow-auto px-6 py-5 bg-white">
-      {safeBlocks.map((block) => {
-        if (hiddenBlocks.has(block.index)) return null
-
+      {visibleBlocks.map((block, index) => {
         const isActive = block.index === activeIndex
 
         // 页面分隔线
-        const pageSep = block.page_idx !== lastPageIdx && lastPageIdx !== -1
-        lastPageIdx = block.page_idx
+        const pageSep = index > 0 && block.page_idx !== visibleBlocks[index - 1].page_idx
 
         const isEquationOrImage = block.type === 'interline_equation' || block.type === 'image' || block.type === 'table'
 

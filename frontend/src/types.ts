@@ -5,12 +5,16 @@ export interface FileItem {
   status: 'pending' | 'running' | 'done' | 'failed'
   created_at: string
   updated_at: string
+  engine: 'local_v3' | 'local_v4' | 'local_v41' | 'cloud' | null
+  mode: 'sync' | 'async' | null
 }
 
 export interface FileDetail extends FileItem {
   content_type: string | null
   result: string | null
   error: string | null
+  source_url: string | null
+  parse_options: string | null
 }
 
 // ── middle_json 原始类型 ──────────────────────────────────────────

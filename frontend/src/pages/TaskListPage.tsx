@@ -31,6 +31,7 @@ export default function TaskListPage({ files, onRefresh }: Props) {
               <tr>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">文件名</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">状态</th>
+                <th className="text-left px-4 py-3 text-gray-500 font-medium">解析方式</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">创建时间</th>
                 <th className="text-left px-4 py-3 text-gray-500 font-medium">更新时间</th>
                 <th className="px-4 py-3" />
@@ -45,6 +46,7 @@ export default function TaskListPage({ files, onRefresh }: Props) {
                 >
                   <td className="px-4 py-3 text-gray-800 max-w-xs truncate">{f.filename}</td>
                   <td className="px-4 py-3"><StatusBadge status={f.status} /></td>
+                  <td className="px-4 py-3 text-gray-500">{f.engine === 'local_v41' ? '本地 v4.1' : f.engine === 'local_v4' ? '本地 v4.0' : f.engine === 'cloud' ? '在线 API' : `本地 v3 · ${f.mode === 'sync' ? '同步' : '异步'}`}</td>
                   <td className="px-4 py-3 text-gray-400">{new Date(f.created_at).toLocaleString()}</td>
                   <td className="px-4 py-3 text-gray-400">{new Date(f.updated_at).toLocaleString()}</td>
                   <td className="px-4 py-3">

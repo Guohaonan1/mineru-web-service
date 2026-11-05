@@ -5,6 +5,7 @@ import SystemStatus from './components/SystemStatus'
 import HomePage from './pages/HomePage'
 import TaskListPage from './pages/TaskListPage'
 import TaskDetailPage from './pages/TaskDetailPage'
+import SettingsPage from './pages/SettingsPage'
 import { api } from './api'
 import type { FileItem } from './types'
 
@@ -21,7 +22,7 @@ function AppShell() {
   }
 
   useEffect(() => {
-    loadFiles()
+    api.listFiles().then(setFiles).catch(() => {})
     const timer = setInterval(loadFiles, 5000)
     return () => clearInterval(timer)
   }, [])
@@ -35,6 +36,7 @@ function AppShell() {
           <Route path="/" element={<HomePage onUploaded={loadFiles} />} />
           <Route path="/tasks" element={<TaskListPage files={files} onRefresh={loadFiles} />} />
           <Route path="/tasks/:id" element={<TaskDetailPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
     </div>

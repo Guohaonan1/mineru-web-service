@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 
-type Status = { mineru: boolean; minio: boolean } | null
+type Status = { mineru: boolean; minio: boolean; local_v3?: { ok: boolean }; local_v4?: { ok: boolean }; local_v41?: { ok: boolean } } | null
 
 function Dot({ ok }: { ok: boolean }) {
   return <span className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-green-500' : 'bg-red-500'}`} />
@@ -26,8 +26,16 @@ export default function SystemStatus() {
   return (
     <div className="fixed top-3 right-4 z-50 flex items-center gap-3 bg-white border border-gray-200 rounded-full px-3 py-1 text-xs text-gray-500 shadow-sm">
       <span className="flex items-center gap-1.5">
-        <Dot ok={status.mineru} />
-        MinerU
+        <Dot ok={status.local_v41?.ok ?? false} />
+        v4.1
+      </span>
+      <span className="flex items-center gap-1.5">
+        <Dot ok={status.local_v4?.ok ?? false} />
+        v4.0
+      </span>
+      <span className="flex items-center gap-1.5">
+        <Dot ok={status.local_v3?.ok ?? false} />
+        v3
       </span>
       <span className="flex items-center gap-1.5">
         <Dot ok={status.minio} />

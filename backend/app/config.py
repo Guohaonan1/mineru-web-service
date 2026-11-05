@@ -6,6 +6,10 @@ class Settings(BaseSettings):
 
     # MinerU
     mineru_url: str = "http://localhost:18000"
+    mineru_v3_url: str | None = None
+    mineru_v4_url: str = "http://localhost:18000"
+    mineru_v41_url: str = "http://localhost:18000"
+    mineru_v4_cli: str = "mineru-kit"
 
     # MinIO
     minio_endpoint: str = "localhost:9000"

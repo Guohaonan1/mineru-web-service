@@ -1,0 +1,13 @@
+"""Common operations exposed by local MinerU major-version adapters."""
+
+from typing import Any, Protocol
+
+
+class LocalMinerUAdapter(Protocol):
+    async def health(self) -> dict[str, Any]: ...
+
+    async def submit(self, file_bytes: bytes, filename: str) -> str: ...
+
+    async def status(self, task_id: str) -> dict[str, Any]: ...
+
+    async def result(self, task_id: str, filename: str) -> dict[str, Any]: ...
